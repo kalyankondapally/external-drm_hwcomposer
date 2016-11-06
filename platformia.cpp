@@ -117,7 +117,7 @@ uint32_t IAImporter::GetFormatForFrameBuffer(uint32_t fourcc_format,
 EGLImageKHR IAImporter::ImportImage(EGLDisplay egl_display,
                                     DrmHwcBuffer *buffer,
                                     buffer_handle_t handle) {
-  gralloc_drm_handle_t *gr_handle = gralloc_drm_handle(handle);
+  cros_gralloc_handle *gr_handle = (struct cros_gralloc_handle *) handle;
   EGLImageKHR image = EGL_NO_IMAGE_KHR;
   // Note: If eglCreateImageKHR is successful for a EGL_LINUX_DMA_BUF_EXT
   // target, the EGL will take a reference to the dma_buf.
@@ -130,19 +130,19 @@ EGLImageKHR IAImporter::ImportImage(EGLDisplay egl_display,
         EGL_LINUX_DRM_FOURCC_EXT,
         DRM_FORMAT_YUV420,
         EGL_DMA_BUF_PLANE0_FD_EXT,
-        gr_handle->prime_fd,
+        gr_handle->data.fds[0],
         EGL_DMA_BUF_PLANE0_PITCH_EXT,
         static_cast<EGLint>(buffer->operator->()->pitches[0]),
         EGL_DMA_BUF_PLANE0_OFFSET_EXT,
         static_cast<EGLint>(buffer->operator->()->offsets[0]),
         EGL_DMA_BUF_PLANE1_FD_EXT,
-        gr_handle->prime_fd,
+        gr_handle->data.fds[0],
         EGL_DMA_BUF_PLANE1_PITCH_EXT,
         static_cast<EGLint>(buffer->operator->()->pitches[1]),
         EGL_DMA_BUF_PLANE1_OFFSET_EXT,
         static_cast<EGLint>(buffer->operator->()->offsets[1]),
         EGL_DMA_BUF_PLANE2_FD_EXT,
-        gr_handle->prime_fd,
+        gr_handle->data.fds[0],
         EGL_DMA_BUF_PLANE2_PITCH_EXT,
         static_cast<EGLint>(buffer->operator->()->pitches[2]),
         EGL_DMA_BUF_PLANE2_OFFSET_EXT,
@@ -161,7 +161,7 @@ EGLImageKHR IAImporter::ImportImage(EGLDisplay egl_display,
         EGL_LINUX_DRM_FOURCC_EXT,
         static_cast<EGLint>(buffer->operator->()->format),
         EGL_DMA_BUF_PLANE0_FD_EXT,
-        gr_handle->prime_fd,
+        gr_handle->data.fds[0],
         EGL_DMA_BUF_PLANE0_PITCH_EXT,
         static_cast<EGLint>(buffer->operator->()->pitches[0]),
         EGL_DMA_BUF_PLANE0_OFFSET_EXT,
@@ -177,22 +177,22 @@ EGLImageKHR IAImporter::ImportImage(EGLDisplay egl_display,
 }
 
 int IAImporter::ImportBuffer(buffer_handle_t handle, hwc_drm_bo_t *bo) {
-  gralloc_drm_handle_t *gr_handle = gralloc_drm_handle(handle);
+  cros_gralloc_handle *gr_handle = (struct cros_gralloc_handle *) handle;
   if (!gr_handle)
     return -EINVAL;
 
   uint32_t gem_handle;
-  int ret = drmPrimeFDToHandle(drm_->fd(), gr_handle->prime_fd, &gem_handle);
+  int ret = drmPrimeFDToHandle(drm_->fd(), gr_handle->data.fds[0], &gem_handle);
   if (ret) {
-    ALOGE("Failed to import prime fd %d ret=%d", gr_handle->prime_fd, ret);
+    ALOGE("Failed to import prime fd %d ret=%d", gr_handle->data.fds[0], ret);
     return ret;
   }
 
   memset(bo, 0, sizeof(hwc_drm_bo_t));
-  bo->width = gr_handle->width;
-  bo->height = gr_handle->height;
-  bo->format = ConvertHalFormatToDrm(gr_handle->format);
-  bo->pitches[0] = gr_handle->stride;
+  bo->width = gr_handle->data.width;
+  bo->height = gr_handle->data.height;
+  bo->format = ConvertHalFormatToDrm(gr_handle->data.format);
+  bo->pitches[0] = gr_handle->data.strides[0];
   bo->gem_handles[0] = gem_handle;
   bo->offsets[0] = 0;
 

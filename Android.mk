@@ -30,7 +30,7 @@ LOCAL_SHARED_LIBRARIES := \
 
 
 LOCAL_C_INCLUDES := \
-        external/drm_gralloc \
+        external/minigbm/cros_gralloc \
 	external/libdrm \
 	external/libdrm/include/drm \
 	system/core/include/utils \
@@ -55,9 +55,7 @@ LOCAL_SRC_FILES := \
 	glworker.cpp \
 	hwcomposer.cpp \
         platform.cpp \
-        platformdrmgeneric.cpp \
 	platformia.cpp \
-        platformnv.cpp \
 	separate_rects.cpp \
 	virtualcompositorworker.cpp \
 	vsyncworker.cpp \

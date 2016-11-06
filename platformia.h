@@ -20,7 +20,7 @@
 #include "drmresources.h"
 #include "platform.h"
 
-#include <gralloc_drm_handle.h>
+#include <cros_gralloc_handle.h>
 #include <hardware/gralloc.h>
 
 namespace android {
