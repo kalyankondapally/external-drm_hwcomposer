@@ -351,4 +351,15 @@ bool DrmPlane::IsSupportedFormat(uint32_t format) {
 
   return false;
 }
+
+void DrmPlane::Dump() const {
+  for (uint32_t j = 0; j < supported_formats_.size(); j++)
+    ALOGI("Format: %4.4s", (char *)&supported_formats_[j]);
+
+  if (alpha_property_.id() == 0)
+    ALOGI("Alpha property is not supported.");
+
+  if (rotation_property_.id() == 0)
+    ALOGI("Rotation property is not supported.");
+}
 }
