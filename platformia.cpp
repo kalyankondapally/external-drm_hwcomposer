@@ -82,8 +82,8 @@ uint32_t IAImporter::GetFormatForFrameBuffer(uint32_t fourcc_format,
 }
 
 EGLImageKHR IAImporter::ImportImage(EGLDisplay egl_display,
-				    DrmHwcBuffer *buffer,
-				    buffer_handle_t handle) {
+                                    DrmHwcBuffer *buffer,
+                                    buffer_handle_t handle) {
   gralloc_drm_handle_t *gr_handle = gralloc_drm_handle(handle);
   EGLImageKHR image = EGL_NO_IMAGE_KHR;
   // Note: If eglCreateImageKHR is successful for a EGL_LINUX_DMA_BUF_EXT
@@ -174,6 +174,60 @@ int IAImporter::ReleaseBuffer(hwc_drm_bo_t *bo) {
   return 0;
 }
 
+bool IAPlanStage::HasValidFrameBuffer(DrmHwcLayer &layer,
+                                      uint32_t plane_type) const {
+  if (layer.buffer->fb_id == 0)
+    layer.buffer.CreateFrameBuffer(plane_type);
+
+  return layer.buffer->fb_id;
+}
+
+void IAPlanStage::ProcessLayers(DrmPlane *target_plane,
+                                std::vector<DrmCompositionPlane> *composition,
+                                std::map<size_t, DrmHwcLayer *> &layers,
+                                DrmCrtc *crtc,
+                                std::vector<DrmPlane *> *planes) const {
+  auto precompiter = GetPrecompIter(composition);
+  std::vector<size_t> source_layers;
+  DrmCompositionPlane::Type type = DrmCompositionPlane::Type::kLayer;
+
+  DrmPlane *next_plane = NULL;
+  if (!planes->empty())
+    next_plane = *(planes->begin());
+  else if (precompiter != composition->end())
+    next_plane = GetPrecomp(composition)->plane();
+
+  // Lets ensure we fall back to GPU composition in case the
+  // primary layer cannot be scanned out directly.
+  if (target_plane->type() == DRM_PLANE_TYPE_PRIMARY) {
+    DrmHwcLayer &layer = *(layers.begin()->second);
+    if (!target_plane->CanCompositeLayer(layer) ||
+        !HasValidFrameBuffer(layer, target_plane->type())) {
+      type = DrmCompositionPlane::Type::kPrecomp;
+    }
+  }
+
+  for (auto i = layers.begin(); i != layers.end();) {
+    source_layers.emplace_back(i->first);
+    i = layers.erase(i);
+
+    if (next_plane && i != layers.end()) {
+      DrmHwcLayer &layer = *(i->second);
+      if ((next_plane->CanCompositeLayer(layer) &&
+           HasValidFrameBuffer(layer, next_plane->type()))) {
+        break;
+      }
+    }
+  }
+
+  if (!source_layers.empty()) {
+    if (source_layers.size() > 1)
+      type = DrmCompositionPlane::Type::kPrecomp;
+
+    composition->emplace(precompiter, type, target_plane, crtc, source_layers);
+  }
+}
+
 int PlanStagePrimary::ProvisionPlanes(
     std::vector<DrmCompositionPlane> *composition,
     std::map<size_t, DrmHwcLayer *> &layers, DrmCrtc *crtc,
@@ -195,10 +249,34 @@ int PlanStagePrimary::ProvisionPlanes(
   if (!primary_plane)
     return 0;
 
-  auto precomp = GetPrecompIter(composition);
-  composition->emplace(precomp, DrmCompositionPlane::Type::kLayer,
-                       primary_plane, crtc, layers.begin()->first);
-  layers.erase(layers.begin());
+  ProcessLayers(primary_plane, composition, layers, crtc, planes);
+
+  return 0;
+}
+
+int PlanStageOverlay::ProvisionPlanes(
+    std::vector<DrmCompositionPlane> *composition,
+    std::map<size_t, DrmHwcLayer *> &layers, DrmCrtc *crtc,
+    std::vector<DrmPlane *> *planes) {
+  if (layers.empty())
+    return 0;
+
+  DrmPlane *overlay_plane = NULL;
+  for (auto i = planes->begin(); i != planes->end(); ++i) {
+    overlay_plane = *i;
+    planes->erase(i);
+    ProcessLayers(overlay_plane, composition, layers, crtc, planes);
+
+    if (layers.empty())
+      return 0;
+  }
+
+  // Put rest of the layers in the precomp plane
+  DrmCompositionPlane *precomp = GetPrecomp(composition);
+  if (precomp) {
+    for (auto i = layers.begin(); i != layers.end(); i = layers.erase(i))
+      precomp->source_layers().emplace_back(i->first);
+  }
 
   return 0;
 }
@@ -207,7 +285,7 @@ int PlanStagePrimary::ProvisionPlanes(
 std::unique_ptr<Planner> Planner::CreateInstance(DrmResources *) {
   std::unique_ptr<Planner> planner(new Planner);
   planner->AddStage<PlanStagePrimary>();
-  planner->AddStage<PlanStageGreedy>();
+  planner->AddStage<PlanStageOverlay>();
   return planner;
 }
 #endif

@@ -47,13 +47,31 @@ class IAImporter : public Importer {
   const gralloc_module_t *gralloc_;
 };
 
+// Base class for all IA plan stages.
+class IAPlanStage : public Planner::PlanStage {
+ protected:
+  bool HasValidFrameBuffer(DrmHwcLayer &layer, uint32_t plane_type) const;
+  void ProcessLayers(DrmPlane *target_plane,
+		      std::vector<DrmCompositionPlane> *composition,
+		      std::map<size_t, DrmHwcLayer *> &layers,
+		      DrmCrtc *crtc,
+		      std::vector<DrmPlane *> *planes) const;
+};
+
 // This plan stage extracts bottom layer and places it on primary
 // plane.
-class PlanStagePrimary : public Planner::PlanStage {
+class PlanStagePrimary : public IAPlanStage {
  public:
   int ProvisionPlanes(std::vector<DrmCompositionPlane> *composition,
                       std::map<size_t, DrmHwcLayer *> &layers, DrmCrtc *crtc,
                       std::vector<DrmPlane *> *planes);
+};
+
+class PlanStageOverlay : public IAPlanStage {
+ public:
+  int ProvisionPlanes(std::vector<DrmCompositionPlane> *composition,
+		      std::map<size_t, DrmHwcLayer *> &layers, DrmCrtc *crtc,
+		      std::vector<DrmPlane *> *planes);
 };
 }
 #endif
